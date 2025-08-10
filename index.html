@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>체스 & 알까기 — 통합 인덱스</title>
+  <title>체스 & 알까기 — </title>
   <style>
     :root{--size:64px;--gap:6px;--bg:#071025}
     *{box-sizing:border-box}
@@ -39,7 +39,7 @@ button{background:#092738;border:1px solid rgba(255,255,255,.04);color:#dbeeff;p
 </head>
 <body>
   <header>
-    <h1>체스 & 알까기 — 통합 데모</h1>
+    <h1>체스 & 알까기 — </h1>
     <div style="margin-left:auto;font-size:13px;opacity:.9">로컬 테스트용 — GitHub 업로드 가능</div>
   </header>  <div class="app">
     <div class="board-wrap">
@@ -183,7 +183,57 @@ function onCellClick(e){ const r=+this.dataset.r, c=+this.dataset.c;
     if(state.mode==='alkk' ? cellVal===state.turn : (cellVal && cellVal.o===state.turn)){ state.selected=[r,c]; updateUI(); }
   }
 }
+<script>
+function getPointerPos(e) {
+    let rect = canvas.getBoundingClientRect();
+    if (e.touches && e.touches[0]) {
+        return {
+            x: e.touches[0].clientX - rect.left,
+            y: e.touches[0].clientY - rect.top
+        };
+    } else {
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+    }
+}
 
+// 기존 mouse 이벤트
+canvas.addEventListener('mousedown', startDrag);
+canvas.addEventListener('mousemove', duringDrag);
+canvas.addEventListener('mouseup', endDrag);
+
+// 모바일 터치 이벤트
+canvas.addEventListener('touchstart', function(e) {
+    e.preventDefault(); // 스크롤 방지
+    startDrag(e);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', function(e) {
+    e.preventDefault();
+    duringDrag(e);
+}, { passive: false });
+
+canvas.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    endDrag(e);
+}, { passive: false });
+
+function startDrag(e) {
+    let pos = getPointerPos(e);
+    // 드래그 시작 로직
+}
+
+function duringDrag(e) {
+    let pos = getPointerPos(e);
+    // 드래그 중 로직
+}
+
+function endDrag(e) {
+    // 드래그 종료 로직
+}
+    
 function inside(r,c){ return r>=0 && r<ROWS && c>=0 && c<COLS }
 
 // --- ALKKA rules ---
