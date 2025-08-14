@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로또 번호 생성기</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        .container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); display: inline-block; }
+        label { font-weight: bold; }
+        select, input, button { margin: 10px; padding: 8px; font-size: 16px; }
+        button { background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        .result { margin-top: 20px; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+<h1>로또 번호 생성기</h1>
+
+<div class="container">
+    <label for="setCount">세트 개수:</label>
+    <select id="setCount">
+        <option value="1">1세트</option>
+        <option value="2">2세트</option>
+        <option value="3">3세트</option>
+        <option value="5">5세트</option>
+    </select>
+
+    <br>
+    <label><input type="checkbox" id="bonusCheck"> 보너스 번호 포함</label>
+    <br>
+    <button id="generateBtn">생성</button>
+    <div class="result" id="resultArea"></div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const setCountEl = document.getElementById("setCount");
+    const bonusCheckEl = document.getElementById("bonusCheck");
+    const resultArea = document.getElementById("resultArea");
+    const generateBtn = document.getElementById("generateBtn");
+
+    // 저장된 값 불러오기
+    if (localStorage.getItem("setCount")) {
+        setCountEl.value = localStorage.getItem("setCount");
+    }
+    if (localStorage.getItem("bonusCheck") === "true") {
+        bonusCheckEl.checked = true;
+    }
+
+    // 생성 버튼 클릭 이벤트
+    generateBtn.addEventListener("click", () => {
+        const setCount = parseInt(setCountEl.value);
+        const includeBonus = bonusCheckEl.checked;
+
+        // 값 저장
+        localStorage.setItem("setCount", setCount);
+        localStorage.setItem("bonusCheck", includeBonus);
+
+        let allResults = "";
+        for (let i = 0; i < setCount; i++) {
+            let numbers = [];
+            while (numbers.length < 6) {
+                let num = Math.floor(Math.random() * 45) + 1;
+                if (!numbers.includes(num)) numbers.push(num);
+            }
+            numbers.sort((a, b) => a - b);
+
+            if (includeBonus) {
+                let bonus;
+                do {
+                    bonus = Math.floor(Math.random() * 45) + 1;
+                } while (numbers.includes(bonus));
+                allResults += `세트 ${i + 1}: ${numbers.join(", ")} | 보너스: ${bonus}<br>`;
+            } else {
+                allResults += `세트 ${i + 1}: ${numbers.join(", ")}<br>`;
+            }
+        }
+        resultArea.innerHTML = allResults;
+    });
+
+    // PWA 설치용 서비스워커 등록
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js')
+            .then(() => console.log("서비스워커 등록 완료"))
+            .catch(err => console.error("서비스워커 등록 실패:", err));
+    }
+});
+</script>
+
+</body>
+</html>
