@@ -1,0 +1,313 @@
+<!doctype html>
+
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>로또 번호 추첨기 6/45 (PWA)</title>
+  <meta name="description" content="중복 없이, 순서 무관, 무작위 6/45 로또 번호 추첨기 · 보너스 번호 · 자동 저장 · PWA" />
+  <meta name="theme-color" content="#0b1020">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%237aa2ff'/%3E%3Ctext x='32' y='40' font-size='28' text-anchor='middle' fill='white' font-family='sans-serif'%3E6%3C/text%3E%3C/svg%3E">
+  <style>
+    :root { --bg:#0b1020; --card:#141a32; --muted:#8c95b2; --text:#e9edff; --accent:#7aa2ff; --btn:#2a3570; --btn-hover:#36439a; --danger:#ff6b6b; --ok:#27c399; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:radial-gradient(1200px 800px at 80% -10%,#1a2144 0%,var(--bg) 55%),var(--bg);color:var(--text);display:grid;place-items:center;padding:24px}
+    .wrap{width:100%;max-width:960px}
+    header{text-align:center;margin-bottom:18px}
+    h1{margin:0 0 8px;font-size:clamp(22px,4vw,34px);letter-spacing:.2px}
+    p.sub{margin:0;color:var(--muted);font-size:14px}
+    .card{background:linear-gradient(180deg,#1b2346,var(--card));border:1px solid rgba(255,255,255,.06);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:20px}
+    .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px}
+    .controls .row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.03);padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.06)}
+    label{font-size:13px;color:var(--muted)}
+    input[type=number]{width:88px}
+    input,select{background:#0f1530;color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:8px 10px}
+    button{border:0;border-radius:999px;padding:12px 16px;font-weight:700;cursor:pointer;background:var(--btn);color:#fff;transition:transform .06s ease, background .2s ease, opacity .2s ease}
+    button:hover{background:var(--btn-hover)}
+    button:active{transform:translateY(1px) scale(.98)}
+    button.primary{background:var(--accent)}
+    button.primary:hover{filter:brightness(1.05)}
+    button.ok{background:var(--ok)}
+    button.danger{background:var(--danger)}
+    button[disabled]{opacity:.55;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:1fr;gap:12px}
+    .rowset{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.03);padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.06)}
+    .set{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .ts{font-size:12px;color:var(--muted);white-space:nowrap}
+    .ball{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:inset 0 2px 8px rgba(0,0,0,.35),0 4px 10px rgba(0,0,0,.25);position:relative;overflow:hidden}
+    .ball::after{content:"";position:absolute;inset:0;background:radial-gradient(140% 120% at -10% -10%, rgba(255,255,255,.35), rgba(255,255,255,0) 40%);mix-blend-mode:screen;pointer-events:none}
+    .b-yellow{background:#ffd34d;color:#3a2a00}
+    .b-blue{background:#6aa8ff;color:#061a3a}
+    .b-red{background:#ff7a7a;color:#3a0610}
+    .b-gray{background:#b7c0d1;color:#1a2233}
+    .b-green{background:#62d2a2;color:#062a1a}
+    .bonus{outline:3px solid #fff3; box-shadow:0 0 0 3px rgba(122,162,255,.55), inset 0 2px 8px rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.25)}
+    .sep{margin:0 4px;color:var(--muted);font-weight:700}
+    .footer{text-align:center;color:var(--muted);font-size:12px;margin-top:12px}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    @media (prefers-reduced-motion:no-preference){.pop{animation:pop .28s ease}@keyframes pop{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>로또 번호 추첨기 <small aria-hidden="true">(6/45)</small></h1>
+      <p class="sub">중복 없이 · 순서 무관 · <abbr title="window.crypto">보안 난수</abbr> · 보너스 번호 · 자동 저장 · PWA</p>
+    </header><main class="card" role="application" aria-label="로또 번호 추첨기">
+  <div class="controls" aria-label="조작">
+    <div class="row">
+      <label for="count">세트 개수</label>
+      <input id="count" type="number" min="1" max="100" step="1" value="5" inputmode="numeric" />
+      <button id="btn-gen" class="primary" title="세트 개수만큼 생성">생성</button>
+    </div>
+    <div class="row">
+      <label for="bonus">보너스 포함</label>
+      <select id="bonus">
+        <option value="on" selected>예</option>
+        <option value="off">아니오</option>
+      </select>
+      <button id="btn-one" title="번호 1세트 추가">+1 세트</button>
+    </div>
+    <div class="row">
+      <button id="btn-copy" class="ok" title="모든 번호를 텍스트로 복사" disabled>복사</button>
+      <button id="btn-clear" class="danger" title="모든 결과 삭제" disabled>모두 지우기</button>
+      <button id="btn-export" title="JSON으로 내보내기" disabled>JSON 저장</button>
+    </div>
+  </div>
+
+  <div id="list" class="grid" aria-live="polite" aria-relevant="additions text" aria-atomic="false"></div>
+
+  <p class="footer">⚠️ 이 도구는 무작위 번호 생성을 도와주는 개인 프로젝트입니다. 당첨을 보장하지 않습니다.</p>
+</main>
+
+  </div>  <template id="row-tpl">
+    <div class="rowset pop">
+      <div class="set" aria-label="추첨된 번호"></div>
+      <div class="ts" aria-label="생성 시각"></div>
+    </div>
+  </template>  <script>
+    // -------------------- PWA: manifest + service worker (단일 HTML용) --------------------
+    (function setupPWA(){
+      // 동적 manifest 생성
+      const manifest = {
+        name: "로또 번호 추첨기 6/45",
+        short_name: "Lotto 6/45",
+        start_url: ".",
+        display: "standalone",
+        background_color: "#0b1020",
+        theme_color: "#0b1020",
+        icons: [
+          { src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%237aa2ff'/%3E%3Ctext x='32' y='40' font-size='28' text-anchor='middle' fill='white' font-family='sans-serif'%3E6%3C/text%3E%3C/svg%3E", sizes: "64x64", type: "image/svg+xml" }
+        ]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], {type: 'application/manifest+json'});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = url;
+      document.head.appendChild(link);
+
+      // 간단한 서비스워커 등록 (오프라인 캐시)
+      const swCode = `
+        const CACHE = 'lotto645-v1';
+        self.addEventListener('install', e => {
+          e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./'])));
+          self.skipWaiting();
+        });
+        self.addEventListener('activate', e => self.clients.claim());
+        self.addEventListener('fetch', e => {
+          const req = e.request;
+          e.respondWith(
+            caches.match(req).then(r => r || fetch(req).then(res => {
+              const copy = res.clone();
+              caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
+              return res;
+            }).catch(()=> caches.match('./')))
+          );
+        });`;
+      if ('serviceWorker' in navigator) {
+        const swBlob = new Blob([swCode], {type: 'text/javascript'});
+        const swUrl = URL.createObjectURL(swBlob);
+        navigator.serviceWorker.register(swUrl).catch(()=>{});
+      }
+    })();
+
+    // -------------------- 유틸 --------------------
+    const range = (n, start = 1) => Array.from({ length: n }, (_, i) => i + start);
+
+    function cryptoRandomInt(min, maxExclusive) {
+      const rangeN = maxExclusive - min; if (rangeN <= 0) throw new Error('잘못된 범위');
+      const maxUint32 = 0xFFFFFFFF; const limit = Math.floor((maxUint32 + 1) / rangeN) * rangeN - 1;
+      const buf = new Uint32Array(1); let x; do { crypto.getRandomValues(buf); x = buf[0]; } while (x > limit);
+      return min + (x % rangeN);
+    }
+
+    function secureShuffle(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) { const j = cryptoRandomInt(0, i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+      return a;
+    }
+
+    // 6/45 추첨: { main:[6], bonus: number|null }
+    function pick645(includeBonus = true) {
+      const pool = secureShuffle(range(45));
+      const main = pool.slice(0, 6).sort((a,b)=>a-b);
+      let bonus = null;
+      if (includeBonus) {
+        // 남은 숫자 중 1개 (메인과 중복 없음)
+        bonus = pool[6];
+      }
+      return { main, bonus };
+    }
+
+    function ballClass(n) {
+      if (n <= 10) return 'b-yellow';
+      if (n <= 20) return 'b-blue';
+      if (n <= 30) return 'b-red';
+      if (n <= 40) return 'b-gray';
+      return 'b-green';
+    }
+
+    function formatSet(entry){
+      const mm = entry.main.map(n => String(n).padStart(2,'0')).join(', ');
+      return entry.bonus ? `${mm} (+ ${String(entry.bonus).padStart(2,'0')})` : mm;
+    }
+
+    // -------------------- 렌더링 --------------------
+    const $list = document.getElementById('list');
+    const $btnGen = document.getElementById('btn-gen');
+    const $btnOne = document.getElementById('btn-one');
+    const $btnCopy = document.getElementById('btn-copy');
+    const $btnClear = document.getElementById('btn-clear');
+    const $btnExport = document.getElementById('btn-export');
+    const $bonus = document.getElementById('bonus');
+    const $count = document.getElementById('count');
+
+    const STORAGE_KEY = 'lotto645_sets_v1';
+
+    function renderSet(entry) {
+      const tpl = document.getElementById('row-tpl');
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      const set = node.querySelector('.set');
+      const ts = node.querySelector('.ts');
+
+      entry.main.forEach(n => {
+        const b = document.createElement('div');
+        b.className = `ball ${ballClass(n)}`;
+        b.textContent = String(n).padStart(2, '0');
+        b.setAttribute('aria-label', `${n}번`);
+        set.appendChild(b);
+      });
+
+      if (entry.bonus) {
+        const sep = document.createElement('span');
+        sep.className = 'sep';
+        sep.textContent = '+';
+        sep.setAttribute('aria-hidden','true');
+        set.appendChild(sep);
+
+        const b = document.createElement('div');
+        b.className = `ball bonus ${ballClass(entry.bonus)}`;
+        b.textContent = String(entry.bonus).padStart(2,'0');
+        b.setAttribute('title','보너스');
+        set.appendChild(b);
+      }
+
+      ts.textContent = new Date(entry.ts).toLocaleString(undefined, { hour12: false });
+      return node;
+    }
+
+    function updateButtons() {
+      const hasRows = $list.children.length > 0;
+      $btnCopy.disabled = !hasRows; $btnClear.disabled = !hasRows; $btnExport.disabled = !hasRows;
+    }
+
+    function addEntry(entry){
+      $list.prepend(renderSet(entry));
+      persist();
+      updateButtons();
+    }
+
+    function addOne(){
+      const includeBonus = $bonus.value === 'on';
+      const {main, bonus} = pick645(includeBonus);
+      const entry = { main, bonus: includeBonus ? bonus : null, ts: new Date().toISOString() };
+      addEntry(entry);
+    }
+
+    function generateMany(){
+      const n = Math.max(1, Math.min(100, Number($count.value)||1));
+      for (let i=0;i<n;i++) addOne();
+    }
+
+    async function copyAll(){
+      const sets = Array.from($list.children).map(row =>
+        formatSet({
+          main: Array.from(row.querySelectorAll('.ball:not(.bonus)')).map(b=>Number(b.textContent)),
+          bonus: (row.querySelector('.ball.bonus')?.textContent) ? Number(row.querySelector('.ball.bonus').textContent) : null
+        })
+      );
+      const text = sets.join('
+');
+      try { await navigator.clipboard.writeText(text); flash($btnCopy); $btnCopy.textContent='복사됨!'; setTimeout(()=>($btnCopy.textContent='복사'), 1000); }
+      catch(e){ alert('복사 실패: '+e.message); }
+    }
+
+    function clearAll(){
+      $list.innerHTML='';
+      persist();
+      updateButtons();
+    }
+
+    function exportJSON(){
+      const data = loadRaw();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `lotto645_${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    function flash(el){ el.animate([{transform:'scale(1)'},{transform:'scale(1.05)'},{transform:'scale(1)'}],{duration:280,easing:'ease'}); }
+
+    // -------------------- 자동 저장 --------------------
+    function loadRaw(){
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+    }
+    function persist(){
+      const items = Array.from($list.children).map(row => ({
+        main: Array.from(row.querySelectorAll('.ball:not(.bonus)')).map(b=>Number(b.textContent)).sort((a,b)=>a-b),
+        bonus: (row.querySelector('.ball.bonus')?.textContent) ? Number(row.querySelector('.ball.bonus').textContent) : null,
+        ts: row.querySelector('.ts')?.textContent ? new Date(row.querySelector('.ts').textContent) : new Date()
+      })).map(e=> ({...e, ts: (new Date(e.ts)).toISOString()}));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
+
+    function restore(){
+      const saved = loadRaw();
+      if (!saved.length) return false;
+      // 최신 항목이 위로 오도록 역순으로 렌더링
+      for (let i = saved.length - 1; i >= 0; i--) {
+        const entry = saved[i];
+        // 정합성 보장
+        const main = (entry.main || []).slice(0,6).map(Number).sort((a,b)=>a-b);
+        const bonus = entry.bonus ? Number(entry.bonus) : null;
+        const ts = entry.ts || new Date().toISOString();
+        $list.prepend(renderSet({main, bonus, ts}));
+      }
+      updateButtons();
+      return true;
+    }
+
+    // -------------------- 이벤트 --------------------
+    $btnGen.addEventListener('click', () => { generateMany(); flash($btnGen); });
+    $btnOne.addEventListener('click', () => { addOne(); flash($btnOne); });
+    $btnCopy.addEventListener('click', () => copyAll());
+    $btnClear.addEventListener('click', () => { clearAll(); flash($btnClear); });
+    $btnExport.addEventListener('click', () => exportJSON());
+
+    // 첫 진입: 저장본 복원 없으면 1세트 생성
+    if (!restore()) { addOne(); }
+  </script></body>
+</html>
