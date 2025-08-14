@@ -1,0 +1,317 @@
+<!doctype html>
+
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3D 로또 드럼 애니메이션 (완전판: 물리+입자+사운드)</title>
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; background:#0b1020; color: #e9edff; font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif; overflow: hidden; }
+    #ui { position: fixed; inset: 16px auto auto 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+    .card { background: rgba(20,26,50,.86); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 12px; backdrop-filter: blur(6px); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    label { font-size: 12px; color: #9aa4c8; }
+    button, select, input[type=range] {
+      appearance: none; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer;
+      background: #2a3570; color: #fff; transition: transform .06s, background .2s, opacity .2s; font-size: 14px;
+    }
+    button:hover { background: #36439a; }
+    button:active { transform: translateY(1px) scale(.98); }
+    button.primary { background: #7aa2ff; }
+    button.primary:hover { filter: brightness(1.05); }
+    button.danger { background: #ff6b6b; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    #log { font-size: 12px; color: #aeb7d6; max-width: 360px; line-height: 1.4; }
+    #result { font-size: 16px; font-weight: 800; letter-spacing: .5px; }
+    .tip { font-size: 11px; color:#9aa4c8; opacity:.9 }
+  </style>
+</head>
+<body>
+  <div id="ui" class="card">
+    <div class="row" style="gap:12px;">
+      <button id="btnStart" class="primary">추첨 시작</button>
+      <button id="btnReset" class="danger" disabled>리셋</button>
+      <label>속도 <input id="speed" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
+      <label><input id="bonus" type="checkbox"> 보너스 포함</label>
+    </div>
+    <div id="result" style="margin-top:6px;"></div>
+    <div id="log"></div>
+    <div class="tip">드래그: 회전 · 휠: 줌 · 모바일: 터치 제스처</div>
+  </div><canvas id="c"></canvas>
+
+  <script type="module">
+    // ====== 라이브러리 로드 ======
+    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+    import * as CANNON from 'https://cdn.skypack.dev/cannon-es@0.20.0';
+
+    // ====== 기본 세팅 ======
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x0b1020, 24, 80);
+    const camera = new THREE.PerspectiveCamera(55, 2, 0.1, 300);
+    camera.position.set(0, 10, 32);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = 0.08; controls.target.set(0, 8, 0);
+
+    // 조명
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x223355, 0.9); scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.2); dir.position.set(12, 26, 18); dir.castShadow = true; dir.shadow.camera.top = 30; dir.shadow.camera.bottom = -10; dir.shadow.camera.left=-20; dir.shadow.camera.right=20; dir.shadow.mapSize.set(1024,1024); scene.add(dir);
+
+    // 바닥
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshPhongMaterial({ color: 0x0a0f24 }));
+    ground.rotation.x = -Math.PI/2; ground.position.y = 0; ground.receiveShadow = true; scene.add(ground);
+
+    // ====== 물리 월드 ======
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+    world.broadphase = new CANNON.SAPBroadphase(world); world.allowSleep = true;
+    const defaultMat = new CANNON.Material('default');
+    const contact = new CANNON.ContactMaterial(defaultMat, defaultMat, { friction: 0.02, restitution: 0.82 });
+    world.addContactMaterial(contact);
+
+    // 물리: 바닥
+    const groundBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Plane(), material: defaultMat });
+    groundBody.quaternion.setFromEuler(-Math.PI/2, 0, 0); world.addBody(groundBody);
+
+    // ====== 드럼(원통) - 다각형 벽으로 근사 ======
+    const drumGroup = new THREE.Group(); scene.add(drumGroup);
+    const drumRadius = 7.2, drumHeight = 10.0, drumY = 8.0;
+
+    // 시각적 와이어 원통
+    const wireMat = new THREE.LineBasicMaterial({ color: 0x42559d, transparent: true, opacity: 0.55 });
+    const cylGeo = new THREE.CylinderGeometry(drumRadius, drumRadius, drumHeight, 48, 1, true);
+    const wireframe = new THREE.LineSegments(new THREE.WireframeGeometry(cylGeo), wireMat);
+    wireframe.position.y = drumY; drumGroup.add(wireframe);
+    const ringGeo = new THREE.RingGeometry(drumRadius*0.98, drumRadius*1.02, 64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x6a7ad0, side: THREE.DoubleSide, transparent:true, opacity:0.35 });
+    const ring1 = new THREE.Mesh(ringGeo, ringMat); ring1.rotation.x = Math.PI/2; ring1.position.y = drumY + drumHeight/2; drumGroup.add(ring1);
+    const ring2 = ring1.clone(); ring2.position.y = drumY - drumHeight/2; drumGroup.add(ring2);
+
+    // 물리: 원통 벽을 N각기둥으로 근사 + 위/아래 캡 (출구 한 면 비움)
+    const N = 18; // 세그먼트 수 (높을수록 둥글게)
+    const walls = [];
+    const exitIndex = 2; // 비워둘 출구 세그먼트 인덱스
+    for (let i=0;i<N;i++){
+      if (i===exitIndex) continue; // 출구
+      const ang = (i / N) * Math.PI * 2;
+      const nx = Math.cos(ang), nz = Math.sin(ang);
+      const wall = new CANNON.Body({ type: CANNON.Body.STATIC, material: defaultMat });
+      wall.addShape(new CANNON.Plane());
+      wall.position.set(nx*drumRadius, drumY, nz*drumRadius);
+      wall.quaternion.setFromEuler(0, Math.atan2(nx, nz), 0); // 법선이 중심을 향하게
+      world.addBody(wall); walls.push(wall);
+    }
+    // 위/아래 캡
+    const topCap = new CANNON.Body({ type: CANNON.Body.STATIC, material: defaultMat });
+    topCap.addShape(new CANNON.Plane());
+    topCap.position.set(0, drumY + drumHeight/2, 0);
+    topCap.quaternion.setFromEuler(Math.PI/2, 0, 0); world.addBody(topCap);
+    const bottomCap = new CANNON.Body({ type: CANNON.Body.STATIC, material: defaultMat });
+    bottomCap.addShape(new CANNON.Plane());
+    bottomCap.position.set(0, drumY - drumHeight/2, 0);
+    bottomCap.quaternion.setFromEuler(-Math.PI/2, 0, 0); world.addBody(bottomCap);
+
+    // ====== UI ======
+    const btnStart = document.getElementById('btnStart');
+    const btnReset = document.getElementById('btnReset');
+    const rngSpeed = document.getElementById('speed');
+    const cbBonus = document.getElementById('bonus');
+    const resultEl = document.getElementById('result');
+    const logEl = document.getElementById('log');
+
+    // ====== 번호 공 ======
+    const balls = []; const meshes = []; const numberSet = new Set();
+    const radius = 0.58; const sphereGeo = new THREE.SphereGeometry(radius, 32, 32);
+
+    function colorFor(n){
+      if(n<=10) return 0xFFD34D; if(n<=20) return 0x6AA8FF; if(n<=30) return 0xFF7A7A; if(n<=40) return 0xB7C0D1; return 0x62D2A2;
+    }
+    function makeNumberSprite(n){
+      const size = 256; const cvs = document.createElement('canvas'); cvs.width=cvs.height=size; const ctx=cvs.getContext('2d');
+      ctx.fillStyle='rgba(0,0,0,0)'; ctx.fillRect(0,0,size,size); ctx.fillStyle='#fff'; ctx.font='bold 140px system-ui,Segoe UI,Roboto,Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=8; ctx.shadowOffsetY=4; ctx.fillText(String(n).padStart(2,'0'), size/2, size/2);
+      const tex = new THREE.CanvasTexture(cvs); tex.anisotropy = 8; return tex;
+    }
+
+    const materialCache = new Map();
+    function getBallMaterial(n){ if(materialCache.has(n)) return materialCache.get(n); const m = new THREE.MeshStandardMaterial({ color: colorFor(n), metalness: 0.25, roughness: 0.35 }); materialCache.set(n, m); return m; }
+
+    for(let i=1;i<=45;i++){
+      // THREE
+      const mesh = new THREE.Mesh(sphereGeo, getBallMaterial(i));
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeNumberSprite(i), transparent: true }));
+      spr.scale.set(0.9, 0.9, 0.9); spr.position.set(0, 0, radius+0.02); mesh.add(spr);
+
+      // 시작 위치 랜덤
+      const r = Math.random() * (drumRadius - radius*1.4);
+      const a = Math.random() * Math.PI * 2;
+      mesh.position.set(Math.cos(a)*r, drumY + (Math.random()*drumHeight - drumHeight/2), Math.sin(a)*r);
+      scene.add(mesh); meshes.push(mesh);
+
+      // CANNON
+      const body = new CANNON.Body({ mass: 0.2, shape: new CANNON.Sphere(radius), position: new CANNON.Vec3(mesh.position.x, mesh.position.y, mesh.position.z), material: defaultMat, linearDamping: 0.01, angularDamping: 0.01, allowSleep: true, sleepSpeedLimit: 0.1, sleepTimeLimit: 1.0 });
+      body.userData = { number: i, sprite: spr, active: true };
+      // 섞이도록 초기 임펄스
+      body.velocity.set((Math.random()-0.5)*6, (Math.random()-0.5)*2, (Math.random()-0.5)*6);
+      body.angularVelocity.set((Math.random()-0.5)*6, (Math.random()-0.5)*6, (Math.random()-0.5)*6);
+      world.addBody(body); balls.push(body);
+    }
+
+    // ====== 파티클(입자 먼지) ======
+    const MAX_PARTICLES = 1200;
+    const pGeom = new THREE.BufferGeometry();
+    const pPos = new Float32Array(MAX_PARTICLES*3);
+    const pVel = new Float32Array(MAX_PARTICLES*3);
+    const pLife = new Float32Array(MAX_PARTICLES);
+    pGeom.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({ size: 0.06, color: 0xaec4ff, transparent: true, opacity: 0.9, depthWrite:false });
+    const particles = new THREE.Points(pGeom, pMat); scene.add(particles);
+    let pHead = 0;
+    function spawnParticles(x,y,z, count=30, spread=0.8, life=600){
+      for(let k=0;k<count;k++){
+        const i = pHead % MAX_PARTICLES; pHead++;
+        const idx = i*3;
+        pPos[idx]=x; pPos[idx+1]=y; pPos[idx+2]=z;
+        pVel[idx]=(Math.random()-0.5)*spread; pVel[idx+1]=Math.random()*spread; pVel[idx+2]=(Math.random()-0.5)*spread;
+        pLife[i]=life*(0.7+Math.random()*0.6);
+      }
+      pGeom.attributes.position.needsUpdate = true;
+    }
+
+    // ====== 사운드(오디오 합성) ======
+    const AudioCtx = window.AudioContext || window.webkitAudioContext; const audioCtx = new AudioCtx();
+    const masterGain = audioCtx.createGain(); masterGain.gain.value = 0.15; masterGain.connect(audioCtx.destination);
+    function clickSound(freq=800, dur=0.04){ const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.type='square'; o.frequency.value=freq; g.gain.value=0.4; o.connect(g); g.connect(masterGain); const now=audioCtx.currentTime; o.start(now); g.gain.exponentialRampToValueAtTime(0.0001, now+dur); o.stop(now+dur); }
+    function thudSound(){ const bufSize=2048; const node=audioCtx.createScriptProcessor(bufSize,1,1); const g=audioCtx.createGain(); g.gain.value=0.35; node.connect(g); g.connect(masterGain); const start=audioCtx.currentTime; let t=0; node.onaudioprocess=(e)=>{ const out=e.outputBuffer.getChannelData(0); for(let i=0;i<bufSize;i++){ const decay=Math.exp(-3*(t)); out[i]=(Math.random()*2-1)*0.5*decay; t+=1/audioCtx.sampleRate; if(audioCtx.currentTime-start>0.12){ node.disconnect(); g.disconnect(); break; } } } }
+    function whoosh(){ const bufSize=2048; const node=audioCtx.createScriptProcessor(bufSize,1,1); const g=audioCtx.createGain(); g.gain.value=0.25; const biquad=audioCtx.createBiquadFilter(); biquad.type='highpass'; biquad.frequency.value=800; node.connect(biquad); biquad.connect(g); g.connect(masterGain); const start=audioCtx.currentTime; let t=0; node.onaudioprocess=(e)=>{ const out=e.outputBuffer.getChannelData(0); for(let i=0;i<bufSize;i++){ const decay=Math.exp(-2.2*(t)); out[i]=(Math.random()*2-1)*0.8*decay; t+=1/audioCtx.sampleRate; if(audioCtx.currentTime-start>0.25){ node.disconnect(); g.disconnect(); biquad.disconnect(); break; } } }
+    }
+    // 유저 제스처 필요 브라우저 대응: 첫 클릭에 resume
+    window.addEventListener('pointerdown', ()=>{ if(audioCtx.state==='suspended') audioCtx.resume(); }, { once:true });
+
+    // ====== 결과 랙 ======
+    const rack = new THREE.Group(); scene.add(rack); rack.position.set(0, 2.2, 12);
+    const rackSlots = 7; const slotSpacing = 2.2; const slotStartX = -((rackSlots-1)*slotSpacing)/2; const slots = Array.from({length:rackSlots}, (_,i)=> new THREE.Vector3(slotStartX + i*slotSpacing, 0, 0));
+
+    // ====== 유틸 ======
+    function formatResult(main, bonus){ const s = main.map(n=>String(n).padStart(2,'0')).join(', '); return bonus? `${s}  (+ ${String(bonus).padStart(2,'0')})` : s; }
+
+    function pickNumbers(includeBonus){ const nums = Array.from({length:45},(_,i)=>i+1); for(let i=nums.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [nums[i],nums[j]]=[nums[j],nums[i]]; } const main = nums.slice(0,6).sort((a,b)=>a-b); const bonus = includeBonus? nums[6]: null; return {main, bonus}; }
+
+    function numberToBodies(n){ return { body: balls[n-1], mesh: meshes[n-1] }; }
+
+    // ====== 상태 ======
+    let running = false; let drawn = []; let bonusDrawn = null; let selectedSeq = [];
+
+    // ====== 애니메이션 루프 ======
+    const fixedTimeStep = 1/120; let last; 
+    function animate(now){
+      requestAnimationFrame(animate);
+      const speedMul = parseFloat(rngSpeed.value);
+      const t = now*0.001; if(!last) last = t; let dt = Math.min(0.05, t - last); last = t;
+      // 드럼을 약간 흔들어 섞이게 (벽 회전 대신 중력 방향을 살짝 흔듦)
+      const wobble = Math.sin(now*0.0013)*0.15*speedMul; world.gravity.set(Math.sin(wobble)*1.5, -9.82, Math.cos(wobble)*1.5);
+
+      // 물리 스텝
+      world.step(fixedTimeStep, dt, 3);
+
+      // 충돌 파티클/사운드 (충돌 이벤트는 전역 리스너에서 처리)
+
+      // Cannon -> Three 동기화
+      for (let i=0;i<balls.length;i++){
+        const b = balls[i]; const m = meshes[i];
+        if (b.userData.active){ m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
+        // 스프라이트 항상 카메라 바라보게
+        const spr = m.children[0]; if (spr && spr.isSprite) spr.lookAt(camera.position);
+      }
+
+      // 파티클 업데이트
+      for(let i=0;i<MAX_PARTICLES;i++){
+        if(pLife[i]>0){ pLife[i]-=dt*1000; const idx=i*3; pPos[idx]+=pVel[idx]*dt*18; pPos[idx+1]+=pVel[idx+1]*dt*18 - dt*9; pPos[idx+2]+=pVel[idx+2]*dt*18; if(pLife[i]<=0){ pPos[idx]=pPos[idx+1]=pPos[idx+2]=1e9; } }
+      }
+      particles.geometry.attributes.position.needsUpdate = true;
+      pMat.opacity = 0.9; // could modulate by life if desired
+
+      controls.update();
+      renderer.setSize(innerWidth, innerHeight, false);
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+
+    // ====== 충돌 이벤트 ======
+    const lastHit = new WeakMap();
+    world.addEventListener('postStep', ()=>{
+      // 단순히 속도가 큰 변화가 있으면 충돌로 간주하고 효과 재생
+      for (const b of balls){
+        const v = b.velocity.length();
+        const prev = lastHit.get(b) || 0;
+        if (v < prev - 1.8){
+          const m = meshes[balls.indexOf(b)];
+          const p = m.position; spawnParticles(p.x, p.y, p.z, 18, 0.8, 420);
+          if (prev > 3) thudSound(); else clickSound(900);
+        }
+        lastHit.set(b, v);
+      }
+    });
+
+    // ====== 추첨 시퀀스 ======
+    async function startDraw(){
+      if (running) return; running = true; btnStart.disabled = true; btnReset.disabled = true; resultEl.textContent=''; logEl.textContent='섞는 중…';
+
+      const includeBonus = cbBonus.checked;
+      const { main, bonus } = pickNumbers(includeBonus);
+      selectedSeq = [...main, ...(includeBonus? [bonus] : [])];
+      drawn = main.slice(); bonusDrawn = bonus;
+
+      // 하나씩 꺼내기: 출구를 통해 나오는 연출 (물리 끄고 트윈 이동)
+      let slotIndex = 0;
+      for (const num of selectedSeq){
+        await wait(700);
+        const { body, mesh } = numberToBodies(num);
+        whoosh();
+        // 물리 비활성화
+        body.sleep(); body.type = CANNON.Body.STATIC; body.userData.active = false;
+        // 이펙트
+        spawnParticles(mesh.position.x, mesh.position.y, mesh.position.z, 36, 1.1, 700);
+        // 슬랏 위치 계산
+        const targetLocal = slots[Math.min(slotIndex, slots.length-1)].clone();
+        const targetWorld = rack.localToWorld(targetLocal.clone());
+        await tweenTo(mesh.position, targetWorld, 650);
+        slotIndex++;
+        logEl.textContent = `추첨: ${num}`;
+      }
+      await wait(600);
+      resultEl.textContent = formatResult(drawn, bonusDrawn);
+      btnReset.disabled = false; logEl.textContent = '완료';
+    }
+
+    function resetAll(){
+      for (let i=0;i<balls.length;i++){
+        const b=balls[i], m=meshes[i];
+        const r = Math.random() * (drumRadius - radius*1.4); const a=Math.random()*Math.PI*2;
+        const y = drumY + (Math.random()*drumHeight - drumHeight/2);
+        b.type = CANNON.Body.DYNAMIC; b.wakeUp(); b.position.set(Math.cos(a)*r, y, Math.sin(a)*r); b.velocity.set((Math.random()-0.5)*6, (Math.random()-0.5)*2, (Math.random()-0.5)*6); b.angularVelocity.set((Math.random()-0.5)*6, (Math.random()-0.5)*6, (Math.random()-0.5)*6); b.userData.active = true;
+        m.position.set(b.position.x, b.position.y, b.position.z);
+      }
+      drawn=[]; bonusDrawn=null; selectedSeq=[]; resultEl.textContent=''; logEl.textContent='';
+      btnStart.disabled=false; btnReset.disabled=true; 
+    }
+
+    // ====== 보조 함수 ======
+    function wait(ms){ return new Promise(res=> setTimeout(res, ms)); }
+    function tweenTo(position, target, dur=600){ return new Promise(res=>{ const start = new THREE.Vector3().copy(position); const diff = new THREE.Vector3().subVectors(target, start); const t0 = performance.now(); (function step(t){ const p = Math.min(1, (t - t0)/dur); const e = 1 - Math.pow(1-p,3); position.copy(start).addScaledVector(diff, e); if (p<1) requestAnimationFrame(step); else res(); })(performance.now()); }); }
+
+    // ====== 이벤트 바인딩 ======
+    btnStart.addEventListener('click', startDraw);
+    btnReset.addEventListener('click', ()=>{ running=false; resetAll(); });
+
+    // 리사이즈
+    addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight, false); });
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight, false);
+  </script></body>
+</html>
