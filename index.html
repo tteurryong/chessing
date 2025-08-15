@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>로또 추첨기</title>
+<style>
+  body {
+    background:#222;
+    color:white;
+    font-family:sans-serif;
+    margin:0;
+    display:flex;
+    height:100vh;
+  }
+  #leftArea {
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+    padding:10px;
+  }
+  canvas {
+    background:#333;
+    display:block;
+    margin:10px auto;
+    image-rendering:pixelated;
+    border-radius:8px;
+  }
+  button {
+    background:#ffcc00; border:none; padding:10px 20px;
+    font-size:20px; font-weight:bold;
+    cursor:pointer; border-radius:8px;
+    margin-top:10px;
+  }
+  button:hover { background:#ffaa00; }
+  #rightArea {
+    width:250px;
+    background:#111;
+    border-left:2px solid #444;
+    overflow-y:auto;
+    padding:10px;
+  }
+  #resultsTitle {
+    font-size:18px;
+    font-weight:bold;
+    margin-bottom:10px;
+    position:sticky;
+    top:0;
+    background:#111;
+    padding:5px 0;
+    border-bottom:1px solid #444;
+  }
+  .resultSet {
+    padding:5px 0;
+    border-bottom:1px solid #333;
+  }
+</style>
+</head>
+<body>
+
+<div id="leftArea">
+  <h1>🎯 로또 추첨기</h1>
+  <canvas id="lottoCanvas" width="500" height="400"></canvas>
+  <button id="drawBtn">뽑기</button>
+</div>
+<div id="rightArea">
+  <div id="resultsTitle">📜 추첨 기록</div>
+  <div id="results"></div>
+</div>
+
+<script>
+const canvas = document.getElementById("lottoCanvas");
+const ctx = canvas.getContext("2d");
+
+let balls = [];
+let pickedNumbers = [];
+let resultsLog = [];
+
+function initBalls() {
+  balls = [];
+  for (let i = 1; i <= 45; i++) {
+    balls.push({
+      num: i,
+      x: Math.random() * (canvas.width + 200) - 100, // 화면 밖까지
+      y: Math.random() * (canvas.height + 200) - 100,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      color: `hsl(${i*8}, 80%, 50%)`,
+      picked: false
+    });
+  }
+}
+
+function drawBalls() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  balls.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 16, 0, Math.PI * 2); // 공 크기 크게
+    ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(b.num, b.x, b.y);
+  });
+}
+
+function updateBalls() {
+  balls.forEach(b => {
+    if (b.picked) return;
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x <= 16 || b.x >= canvas.width - 16) b.vx *= -1;
+    if (b.y <= 16 || b.y >= canvas.height - 16) b.vy *= -1;
+  });
+}
+
+function pickOneBall() {
+  let remainingBalls = balls.filter(b => !b.picked);
+  let chosen = remainingBalls[Math.floor(Math.random() * remainingBalls.length)];
+  chosen.picked = true;
+  chosen.vx = 0;
+  chosen.vy = 0;
+  // 중앙으로 애니메이션 이동
+  let targetX = canvas.width / 2 + pickedNumbers.length * 40 - 100;
+  let targetY = canvas.height / 2;
+  let step = 0;
+  let anim = setInterval(() => {
+    chosen.x += (targetX - chosen.x) * 0.2;
+    chosen.y += (targetY - chosen.y) * 0.2;
+    step++;
+    if (step > 10) {
+      clearInterval(anim);
+      chosen.x = targetX;
+      chosen.y = targetY;
+    }
+  }, 30);
+
+  pickedNumbers.push(chosen.num);
+}
+
+let isDrawing = false;
+document.getElementById("drawBtn").addEventListener("click", () => {
+  if (isDrawing) return;
+  isDrawing = true;
+  pickedNumbers = [];
+  initBalls();
+
+  let count = 0;
+  let interval = setInterval(() => {
+    pickOneBall();
+    count++;
+    if (count >= 6) {
+      clearInterval(interval);
+      // 결과 기록
+      pickedNumbers.sort((a,b) => a - b);
+      resultsLog.push(pickedNumbers);
+      document.getElementById("results").innerHTML = resultsLog
+        .map((set, idx) => `<div class="resultSet">세트 ${idx+1}: ${set.join(", ")}</div>`)
+        .join("");
+      isDrawing = false;
+    }
+  }, 1500);
+});
+
+setInterval(() => {
+  updateBalls();
+  drawBalls();
+}, 30);
+
+initBalls();
+</script>
+
+</body>
+</html>
