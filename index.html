@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>로또 뽑기</title>
+<style>
+  body { background:#222; color:white; font-family:sans-serif; text-align:center; }
+  canvas { background:#333; display:block; margin:10px auto; image-rendering:pixelated; }
+  button {
+    background:#ffcc00; border:none; padding:10px 20px; font-size:20px; font-weight:bold;
+    cursor:pointer; border-radius:8px;
+  }
+  button:hover { background:#ffaa00; }
+  #results { margin-top:20px; font-size:18px; }
+</style>
+</head>
+<body>
+
+<h1>🎯 로또 뽑기</h1>
+<canvas id="lottoCanvas" width="500" height="300"></canvas>
+<button id="drawBtn">뽑기</button>
+<div id="results"></div>
+
+<script>
+const canvas = document.getElementById("lottoCanvas");
+const ctx = canvas.getContext("2d");
+
+let balls = [];
+let pickedNumbers = [];
+let resultsLog = [];
+
+function initBalls() {
+  balls = [];
+  for (let i = 1; i <= 45; i++) {
+    balls.push({
+      num: i,
+      x: Math.random() * (canvas.width - 20) + 10,
+      y: Math.random() * (canvas.height - 20) + 10,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      color: `hsl(${i*8}, 80%, 50%)`,
+      picked: false
+    });
+  }
+}
+
+function drawBalls() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  balls.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(b.num, b.x, b.y);
+  });
+}
+
+function updateBalls() {
+  balls.forEach(b => {
+    if (b.picked) return; // 이미 뽑힌 공은 안 움직임
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x <= 10 || b.x >= canvas.width - 10) b.vx *= -1;
+    if (b.y <= 10 || b.y >= canvas.height - 10) b.vy *= -1;
+  });
+}
+
+function pickOneBall() {
+  let remainingBalls = balls.filter(b => !b.picked);
+  let chosen = remainingBalls[Math.floor(Math.random() * remainingBalls.length)];
+  chosen.picked = true;
+  chosen.x = canvas.width / 2 + pickedNumbers.length * 30 - 90;
+  chosen.y = canvas.height / 2;
+  chosen.vx = 0;
+  chosen.vy = 0;
+  pickedNumbers.push(chosen.num);
+}
+
+let isDrawing = false;
+document.getElementById("drawBtn").addEventListener("click", () => {
+  if (isDrawing) return;
+  isDrawing = true;
+  pickedNumbers = [];
+  initBalls();
+
+  let count = 0;
+  let interval = setInterval(() => {
+    pickOneBall();
+    count++;
+    if (count >= 6) {
+      clearInterval(interval);
+      pickedNumbers.sort((a,b) => a - b);
+      resultsLog.push(pickedNumbers);
+      document.getElementById("results").innerHTML = resultsLog
+        .map((set, idx) => `<div>세트 ${idx+1}: ${set.join(", ")}</div>`)
+        .join("");
+      isDrawing = false;
+    }
+  }, 1500); // 공 하나 뽑고 1.5초 대기
+});
+
+setInterval(() => {
+  updateBalls();
+  drawBalls();
+}, 30);
+
+initBalls();
+</script>
+</body>
+</html>
